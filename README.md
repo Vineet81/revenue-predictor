@@ -1,3 +1,6 @@
+## 🚀 Live Demo
+👉 [Try the Revenue Predictor App](https://revenue-predictor-xctjjeqb3fape6smac4ffl.streamlit.app/)
+
 # 💰 Revenue Predictor App
 
 A web-based app to forecast business revenue based on budget allocations across marketing channels using Ridge and Lasso regression.
