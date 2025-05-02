@@ -1,93 +1,83 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
 import matplotlib.pyplot as plt
-import seaborn as sns
 
-# Load trained pipeline with preprocessing
-model = joblib.load("covid_recovery_model.pkl")
+# Load the trained model
+model = joblib.load("revenue_model.pkl")
 
-st.set_page_config(page_title="COVID-19 Recovery Dashboard", layout="wide")
-st.title("🦠 COVID-19 Recovery Risk Predictor Dashboard")
+st.title("Marketing Spend – Revenue Prediction Dashboard")
 
-# Sidebar for navigation
-st.sidebar.header("Navigation")
-options = st.sidebar.radio("Choose Action", ["Single Prediction", "Bulk Prediction & Visualization"])
+# Create tabs for better UI
+tab1, tab2 = st.tabs(["Single Prediction", "Bulk Prediction"])
 
-# -------------------- SINGLE PREDICTION --------------------
-# Single input with manual mapping
-age = st.slider("Age", 18, 90, 35)
+# -------- Tab 1: Single Input Prediction --------
+with tab1:
+    st.header("Predict Revenue from Your Inputs")
+    st.markdown("Use sliders to set marketing spend:")
+    
+    email = st.slider("Email Spend ($)", 0, 15000, 3000)
+    social = st.slider("Social Media Spend ($)", 0, 10000, 1000)
+    seo = st.slider("SEO Spend ($)", 0, 10000, 1000)
+    ads = st.slider("Paid Ads Spend ($)", 0, 20000, 5000)
+    
+    input_data = pd.DataFrame({
+        'Email_Spend': [email],
+        'Social_Spend': [social],
+        'SEO_Spend': [seo],
+        'PaidAds_Spend': [ads]
+       
+    })
 
-vaccination = st.radio("Vaccination Status", ["YES", "NO"])
-vaccination = 1 if vaccination == "YES" else 0
+    st.subheader("Input Summary")
+    st.dataframe(input_data)
 
-liver = st.radio("Liver Function", ["Normal", "Abnormal"])
-liver = 1 if liver == "Normal" else 0
+    prediction = model.predict(input_data)[0]
+    st.metric(label="Predicted Revenue ($)", value=f"{prediction:,.2f}")
 
-gfr = st.radio("GFR (Kidney)", ["Normal", "Abnormal"])
-gfr = 1 if gfr == "Normal" else 0
+    st.subheader("Spend Distribution")
+    fig, ax = plt.subplots()
+    labels = ['Email', 'Social Media', 'SEO', 'Paid Ads']
+    values = [email,social, seo, ads]
+    ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90)
+    st.pyplot(fig)
 
-immuno = st.radio("Immunoglobulin Levels", ["Normal", "Abnormal"])
-immuno = 1 if immuno == "Normal" else 0
+# -------- Tab 2: Bulk CSV Upload --------
+with tab2:
+    st.header("Upload CSV for Bulk Prediction")
+    uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 
-spirometry = st.radio("Spirometry", ["Normal", "Abnormal"])
-spirometry = 1 if spirometry == "Normal" else 0
-
-t_cell = st.radio("T Cell Count", ["Normal", "Abnormal"])
-t_cell = 1 if t_cell == "Normal" else 0
-
-# Prediction
-if st.button("Predict"):
-    single_input = pd.DataFrame([[
-        age, vaccination, liver, gfr, immuno, spirometry, t_cell
-    ]], columns=["AGE", "VACCINATION", "LIVER", "GFR", "IMMUNOGLOBULIN", "SPIROMETRY", "T_CELL_COUNT"])
-
-    prediction = model.predict(single_input)[0]
-    st.success(f"🩺 Predicted Recovery Status: **{prediction}**")
-
-
-# -------------------- BULK PREDICTION --------------------
-elif options == "Bulk Prediction & Visualization":
-    st.subheader("📤 Upload Patient Data for Bulk Prediction")
-
-    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
+        user_data = pd.read_csv(uploaded_file)
+        st.subheader("Uploaded Data")
+        st.dataframe(user_data)
 
         try:
-            preds = model.predict(df)
-            df["Predicted_Recovery_Status"] = preds
-            st.success("✅ Predictions Completed")
-            st.dataframe(df)
+            predictions = model.predict(user_data)
+            user_data['Predicted Revenue'] = predictions
+            st.subheader("Predicted Results")
+            st.dataframe(user_data)
 
-            # Download
-            download_csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("Download Results", download_csv, "predicted_results.csv", "text/csv")
+            @st.cache_data
+            def convert_df(df):
+                return df.to_csv(index=False).encode('utf-8')
 
-            st.subheader("📊 Visualizations")
+            csv = convert_df(user_data)
+            st.download_button(
+                label="Download Predictions as CSV",
+                data=csv,
+                file_name='revenue_predictions.csv',
+                mime='text/csv',
+            )
 
-            # Pie Chart
-            st.markdown("### 🥧 Recovery Status Distribution")
-            pie_data = df["Predicted_Recovery_Status"].value_counts()
-            fig1, ax1 = plt.subplots()
-            ax1.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
-            ax1.axis("equal")
-            st.pyplot(fig1)
-
-            # Age vs Recovery
-            st.markdown("### 📈 Age vs Recovery Risk")
-            fig2, ax2 = plt.subplots(figsize=(8, 4))
-            sns.boxplot(data=df, x="Predicted_Recovery_Status", y="AGE", ax=ax2)
+            # Visualization
+            st.subheader("Revenue vs. Paid Ads")
+            fig2, ax2 = plt.subplots()
+            ax2.scatter(user_data['PaidAds_Spend'], user_data['Predicted Revenue'], color='green')
+            ax2.set_xlabel("Paid Ads")
+            ax2.set_ylabel("Predicted Revenue")
             st.pyplot(fig2)
 
-            # Heatmap of Features
-            st.markdown("### 🔥 Correlation Heatmap (Numerical)")
-            numeric_df = df.select_dtypes(include='number')
-            if not numeric_df.empty:
-                fig3, ax3 = plt.subplots(figsize=(10, 6))
-                sns.heatmap(numeric_df.corr(), annot=True, cmap='coolwarm', ax=ax3)
-                st.pyplot(fig3)
-            else:
-                st.info("ℹ️ No numeric columns to display correlation heatmap.")
         except Exception as e:
-            st.error(f"❌ Prediction Failed: {e}")
+            st.error(f"Error during prediction: {e}")
